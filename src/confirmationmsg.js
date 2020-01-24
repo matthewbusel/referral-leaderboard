@@ -42,11 +42,11 @@ const sendConfirmation = (referral, access_token) => {
             fields: [
               {
                 type: "mrkdwn",
-                text: `*Name* \n${referral.name}`
+                text: `\n>*Name* \n>${referral.name}`
               },
               {
                 type: "mrkdwn",
-                text: `*Position* \n${referral.position}`
+                text: `\n>*Position* \n>${referral.position}`
               }
             ]
           },
@@ -55,11 +55,11 @@ const sendConfirmation = (referral, access_token) => {
             fields: [
               {
                 type: "mrkdwn",
-                text: `*Email* \n${referral.email}`
+                text: `\n>*Email* \n><mailto:${referral.email}|${referral.email}>`
               },
               {
                 type: "mrkdwn",
-                text: `*LinkedIn* \n${referral.linkedin}`
+                text: `\n>*LinkedIn* \n>${referral.linkedin}`
               }
             ]
           },
@@ -69,7 +69,7 @@ const sendConfirmation = (referral, access_token) => {
               {
                 type: "mrkdwn",
                 text:
-                  "Questions? Contact your hiring manager or <support@refleaderboard.com>"
+                  "Questions? Contact your hiring manager or <matthewbusel@gmail.com>"
               }
             ]
           }

@@ -93,8 +93,10 @@ app.get("/auth", function(req, res) {
 
       searchCreateTeam(team);
 
-      res.sendStatus(200);
+      // redirect to the download success webpage
+      res.redirect(process.env.LANDING_PAGE_URL);
 
+      // res.sendStatus(200);
       // Show a nicer web page or redirect to Slack, instead of just giving 200 in reality!
       //res.redirect(__dirname + "/public/success.html");
     }
@@ -232,6 +234,7 @@ const searchCreateTeam = team => {
 
 // Create the team in the Teams table and save the webhook channel and webhook url
 const createTeam = team => {
+  let endDate = moment().add(90, 'days').calendar();
   base("Teams").create(
     [
       {
@@ -240,7 +243,8 @@ const createTeam = team => {
           TeamId: team.team_id,
           webhook_channel: team.channel,
           webhook_url: team.url,
-          authed_user: team.authed_user
+          authed_user: team.authed_user,
+          game_end: endDate
         }
       }
     ],
@@ -320,10 +324,6 @@ app.post("/command", (req, res) => {
           blocks: [
             {
               type: "section",
-              // text: {
-              //   type: "mrkdwn",
-              //   text: ":wave: Hey <@" + user_id + ">, \n\nReady to move up the leaderboard? Tell your hiring manager who they should speak with and *earn 1 point* (whether they are hired or not)!"
-              // }
               text: {
                 type: "mrkdwn",
                 text:
@@ -425,55 +425,290 @@ app.post("/command", (req, res) => {
 // --------------------------------------------------------------------------------------------------------------------------
 // Endpoint to receive the dialog submission.
 // Checks the verification token and creates a referral
+// Also the endpoint to receive button clicks such as the buttons in the app_home
 
 app.post("/interactive", (req, res) => {
   // parse the incoming body payload from the submission of the referral modal
   const body = JSON.parse(req.body.payload);
   const team_id = body.team.id;
+  const user_id = body.user.id;
+  const { type, trigger_id } = body;
+  
+  switch (body.type) {
+    // if the user is submitting a referral ->
+    case "view_submission": {
+      // check that the verification token matches expected value
+      if (signature.isVerified(req)) {
+        debug(`Form submission received: ${body.view}`);
 
-  // check that the verification token matches expected value
-  if (signature.isVerified(req)) {
-    debug(`Form submission received: ${body.view}`);
+        // immediately respond with a empty 200 response to let
+        // Slack know the command was received
+        res.send("");
 
-    // immediately respond with a empty 200 response to let
-    // Slack know the command was received
-    res.send("");
+        // create an employee object and set the userId property
+        // to the Slack userId of the employee who submited the referral
+        const employee = {};
+        employee.userId = body.user.id;
+        employee.name = body.user.name;
+        employee.teamId = body.user.team_id;
+        employee.username = body.user.username;
 
-    // create an employee object and set the userId property
-    // to the Slack userId of the employee who submited the referral
-    const employee = {};
-    employee.userId = body.user.id;
-    employee.name = body.user.name;
-    employee.teamId = body.user.team_id;
-    employee.username = body.user.username;
+        // create a referral object and set the field names for each column based on the submitted modal
+        const referral = {};
+        let values = body.view.state.values;
+        referral.name = values.name_block.name.value;
+        referral.email = values.email_block.email.value;
+        referral.position = values.position_block.position.value;
+        referral.linkedin = values.linkedin_block.linkedin.value;
+        referral.employee = body.user.name;
+        referral.teamId = body.user.team_id;
 
-    // create a referral object and set the field names for each column based on the submitted modal
-    const referral = {};
-    let values = body.view.state.values;
-    referral.name = values.name_block.name.value;
-    referral.email = values.email_block.email.value;
-    referral.position = values.position_block.position.value;
-    referral.linkedin = values.linkedin_block.linkedin.value;
-    referral.employee = body.user.name;
-    referral.teamId = body.user.team_id;
+        // postInitMessage(referral);
+        getToken(team_id, req, res).then(record =>
+          postInitMessage(record, referral)
+        );
 
-    // postInitMessage(referral);
-    getToken(team_id, req, res).then(record =>
-      postInitMessage(record, referral)
-    );
+        // look for the employee in the db, if it does not exist, create the employee, then (either way) create the referral record
+        searchEmployee(employee)
+          .then(record => pickRecord(record.employee))
+          .then(record => createReferral(record, referral));
 
-    // look for the employee in the db, if it does not exist, create the employee, then (either way) create the referral record
-    searchEmployee(employee)
-      .then(record => pickRecord(record.employee))
-      .then(record => createReferral(record, referral));
+        // send confirmation direct message to employee who submitted the referral
+        getToken(team_id, req, res).then(record =>
+          confirmationmsg.triggerSend(body.view, body.user, record)
+        );
+      } else {
+        debug("Token mismatch");
+        res.sendStatus(404);
+      }
+      break;
+    } // if the user is taking a block action such as clicking a button ->
+    case "block_actions": {
+      // this is the submit referral button at the bottom of the app_home
+      if (body.actions[0].value === "submit_referral_button") {
+        // retrieve the access token of the team who sent the /command post request to use to open a modal in their workspace
+        getToken(team_id).then(record => openView(record));
 
-    // send confirmation direct message to employee who submitted the referral
-    getToken(team_id, req, res).then(record =>
-      confirmationmsg.triggerSend(body.view, body.user, record)
-    );
-  } else {
-    debug("Token mismatch");
-    res.sendStatus(404);
+        const openView = record => {
+          let access_token = record.access_token;
+
+          const view = {
+            // token: process.env.SLACK_ACCESS_TOKEN,
+            token: access_token,
+            trigger_id,
+            view: JSON.stringify({
+              type: "modal",
+              title: {
+                type: "plain_text",
+                text: "Submit a referral!"
+              },
+              callback_id: "submit-referral",
+              submit: {
+                type: "plain_text",
+                text: "Submit"
+              },
+              blocks: [
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text:
+                      ":wave: Hey <@" +
+                      user_id +
+                      ">, \n\nEarn *1 point* on the leaderboard for every referral you submit!"
+                  }
+                },
+                {
+                  type: "divider"
+                },
+                {
+                  block_id: "name_block",
+                  type: "input",
+                  label: {
+                    type: "plain_text",
+                    text: "Name"
+                  },
+                  element: {
+                    action_id: "name",
+                    type: "plain_text_input"
+                  },
+                  hint: {
+                    type: "plain_text",
+                    text: "Who should we speak with?"
+                  }
+                },
+                {
+                  block_id: "position_block",
+                  type: "input",
+                  label: {
+                    type: "plain_text",
+                    text: "Position"
+                  },
+                  element: {
+                    action_id: "position",
+                    type: "plain_text_input"
+                  },
+                  hint: {
+                    type: "plain_text",
+                    text: "What role would might they have?"
+                  }
+                },
+                {
+                  block_id: "email_block",
+                  type: "input",
+                  label: {
+                    type: "plain_text",
+                    text: "Email"
+                  },
+                  element: {
+                    action_id: "email",
+                    type: "plain_text_input"
+                  },
+                  hint: {
+                    type: "plain_text",
+                    text: "How can we contact them?"
+                  }
+                },
+                {
+                  block_id: "linkedin_block",
+                  type: "input",
+                  label: {
+                    type: "plain_text",
+                    text: "LinkedIn"
+                  },
+                  element: {
+                    action_id: "linkedin",
+                    type: "plain_text_input"
+                  },
+                  hint: {
+                    type: "plain_text",
+                    text: "Could you share their LinkedIn profile?"
+                  }
+                  // optional: true
+                }
+              ]
+            })
+          };
+
+          // open the modal by calling views.open method and sending the payload
+          axios
+            .post(`${apiUrl}/views.open`, qs.stringify(view))
+            .then(result => {
+              debug("views.open: %o", result.data);
+              res.send("");
+            })
+            .catch(err => {
+              debug("views.open call failed: %o", err);
+              res.sendStatus(500);
+            });
+        };
+      }
+      // faq button is clicked (currently in the app_home) -> opens faq modal
+      if (body.actions[0].value === "faq_button") {
+        // retrieve the access token of the team who sent the /command post request to use to open a modal in their workspace
+        getToken(team_id).then(record => openView(record));
+
+        const openView = record => {
+          let access_token = record.access_token;
+
+          const view = {
+            // token: process.env.SLACK_ACCESS_TOKEN,
+            token: access_token,
+            trigger_id,
+            view: JSON.stringify({
+              type: "modal",
+              title: {
+                type: "plain_text",
+                text: "FAQ",
+                emoji: true
+              },
+              close: {
+                type: "plain_text",
+                text: "Cancel",
+                emoji: true
+              },
+              blocks: [
+                {
+                  type: "divider"
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text:
+                      "*Do we have to name the channels #referral-engine and #referral-leaderboard?*\nFor now yes, although we'd like to add flexibility to change the names in the future."
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text:
+                      "*How long does the competition last?*\nThe length of the game is determined by your hiring manger when he or she signed up, but we default to 90 days. If you'd like to change the game end date, please reach out to support."
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text:
+                      "*What is the prize for winning Leaderboard?*\nThe prize for each leaderboard is determined by your company. If you're unsure what it should be reach out - we have recommendations!"
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text:
+                      "*How often does Leaderboard post in Slack?*\nWe only post the results of Leaderboard once per week in #referral-leaderboard so your team can stay focused."
+                  }
+                },
+                {
+                  type: "divider"
+                }
+                // commented out until I can figure out how to open a modal within a modal + open a new tab
+                // {
+                //   type: "actions",
+                //   elements: [
+                //     {
+                //       type: "button",
+                //       text: {
+                //         type: "plain_text",
+                //         text: "Send feedback",
+                //         emoji: true
+                //       },
+                //       value: "send_feedback_button"
+                //     },
+                //     {
+                //       type: "button",
+                //       text: {
+                //         type: "plain_text",
+                //         text: "Visit website",
+                //         emoji: true
+                //       },
+                //       value: "visit_website_button"
+                //     }
+                //   ]
+                // }
+              ]
+            })
+          };
+
+          // open the modal by calling views.open method and sending the payload
+          axios
+            .post(`${apiUrl}/views.open`, qs.stringify(view))
+            .then(result => {
+              debug("views.open: %o", result.data);
+              res.send("");
+            })
+            .catch(err => {
+              debug("views.open call failed: %o", err);
+              res.sendStatus(500);
+            });
+        };
+      }
+      break;
+    }
   }
 });
 
@@ -613,11 +848,13 @@ app.post("/zapier/ping", (req, res) => {
     console.log("Zapier Webhook - Post Request");
     res.sendStatus(200);
 
+    // list all teams in the Teams table with their teamId and their webhookUrl
     listTeams().then(teamList => {
+      // define the array of teams from the object of teams that resolved from the promise in listTeams()
       let teamArray = teamList.teamList;
 
-      // NEED TO PASS EACH TEAM OBJECT TO LISTEMPLOYEES, THEN NEED TO USE THE TEAM KEY IN LISTEMPLOYEES TO ACT AS THE IDENTIFIER AND
-      // CONTINUE TO PASS THE TOKEN THROUGH TO THE POST
+      // for each team in the team array, pass the team's object (with teamId and webhookURL) to listEmployees()
+      // in order to list all their employees with referrals -> resolve with both that list and the webhookUrl in order to post the message
       teamArray.forEach(team => {
         listEmployees(team)
           .then(employeeList => {
@@ -626,13 +863,6 @@ app.post("/zapier/ping", (req, res) => {
           .catch(err => console.log(err));
       });
     });
-
-    // WORKING CODE -> COMMENTED OUT TO TEST ABOVE
-    // listEmployees(token)
-    //   .then(employeeList => {
-    //     post(employeeList);
-    //   })
-    //   .catch(err => console.log(err));
   } else {
     res.sendStatus(500);
   }
@@ -686,6 +916,8 @@ const listTeams = () => {
 // filters Airtable for employees with matching teamId, sorts by referralCount
 // and pushes each employee + their referralCount to an array called employeeList
 const listEmployees = teamObject => {
+  // the argument is an object where the key is the teamId and the value is the webhook Url
+  // object.keys returns an array of keys, so need to grab the 0th key in order to get the only key in the object
   let teamId = Object.keys(teamObject)[0];
   let webhookUrl = Object.values(teamObject)[0];
 
@@ -740,24 +972,43 @@ const post = employeeList => {
   let employeeArray = employeeList.employeeList;
   let webhookUrl = employeeList.webhookUrl;
 
-  // define an empty array to push a block to for each employee on the leaderboard
+  // define an empty array to push a block section to for each employee on the leaderboard
   let blockArray = [];
 
   // for every employee that submitted a referral, add a block to the block array with their name and referralcount
   employeeArray.forEach(function(obj, index) {
-    for (var key in obj) {
-      blockArray.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `${index + 1} : ${key}  ${obj[key]}`
-        }
-      });
+    // separating the top employee in case in the future we want to call out the leader in some way
+    if (index == 0) {
+      for (var key in obj) {
+        // dynamic number of spaces after each name dependent upon the length of the name in order to align horizontally
+        let numSpaces = 46 - key.length * 2;
+        let spaces = " ".repeat(numSpaces);
+
+        blockArray.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${index + 1}*            ${key}${spaces}${obj[key]}`
+          }
+        });
+      }
+    } else {
+      for (var key in obj) {
+        let numSpaces = 46 - key.length * 2;
+        let spaces = " ".repeat(numSpaces);
+
+        blockArray.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${index + 1}*            ${key}${spaces}${obj[key]}`
+          }
+        });
+      }
     }
   });
 
-  // let date = dateGenerator();
-  let date = moment().format("MMMM Do");
+  let date = moment().format("MMMM Do YYYY");
 
   // add a heading to the leaderboard post with the date
   blockArray.unshift(
@@ -765,13 +1016,40 @@ const post = employeeList => {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Referral Leaderboard ${date}*   The results are in!`
+        text: "*🏆 Leaderboard Results*"
+      }
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `*${date} - the results are in!*`
+        }
+      ]
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Rank*      *Name*                                   *Referrals*"
       }
     },
     {
       type: "divider"
     }
   );
+
+  blockArray.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text:
+          "Questions? Contact your hiring manager or <matthewbusel@gmail.com>"
+      }
+    ]
+  });
 
   const json = {
     username: "referralleaderboard",
@@ -814,7 +1092,7 @@ const postInitMessage = (record, referral) => {
           {
             type: "mrkdwn",
             text: `This referral was submitted on ${moment().format(
-              "MMM Do YY"
+              "MMM Do YYYY"
             )}`
           }
         ]
@@ -834,11 +1112,11 @@ const postInitMessage = (record, referral) => {
         fields: [
           {
             type: "mrkdwn",
-            text: `*Name* \n${referral.name}`
+            text: `\n>*Name* \n>${referral.name}`
           },
           {
             type: "mrkdwn",
-            text: `*Position* \n${referral.position}`
+            text: `\n>*Position* \n>${referral.position}`
           }
         ]
       },
@@ -847,11 +1125,11 @@ const postInitMessage = (record, referral) => {
         fields: [
           {
             type: "mrkdwn",
-            text: `*Email* \n${referral.email}`
+            text: `\n>*Email* \n><mailto:${referral.email}|${referral.email}>`
           },
           {
             type: "mrkdwn",
-            text: `*LinkedIn* \n${referral.linkedin}`
+            text: `\n>*LinkedIn* \n>${referral.linkedin}`
           }
         ]
       },
@@ -860,7 +1138,7 @@ const postInitMessage = (record, referral) => {
         elements: [
           {
             type: "mrkdwn",
-            text: "Questions? Contact <support@refleaderboard.com>"
+            text: "Questions? Contact <matthewbusel@gmail.com>"
           }
         ]
       },
@@ -886,6 +1164,209 @@ const send = async (data, access_token, as_user) => {
     console.log(err);
   }
 };
+
+// --------------------------------------------------------------------------------------------------------------------------
+/*
+ * Endpoint to receive events from Slack's Events API.
+ */
+
+app.post("/events", (req, res) => {  
+  switch (req.body.type) {
+    case "url_verification": {
+      // verify Events API endpoint by returning challenge if present
+      res.send({ challenge: req.body.challenge });
+      break;
+    }
+    case "event_callback": {
+      // Verify the signing secret
+      if (!signature.isVerified(req)) {
+        res.sendStatus(404);
+        return;
+      } else {
+        const token = req.body.token;
+        const team_id = req.body.team_id;
+        const { type, user, channel } = req.body.event;
+
+        // if a user selects the app home, open the app home view
+
+        if (type === "app_home_opened") {
+          getToken(team_id).then(record => openView(record));
+
+          const openView = record => {
+            let access_token = record.access_token;
+
+            const view = {
+              // token: process.env.SLACK_ACCESS_TOKEN,
+              token: access_token,
+              user_id: user,
+              view: JSON.stringify({
+                type: "home",
+                blocks: [
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: " *Leaderboard*"
+                    }
+                  },
+                  {
+                    type: "divider"
+                  },
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text:
+                        "Leaderboard is a friendly competition where you can win prizes and help your team hire better 😎"
+                    }
+                  },
+                  {
+                    type: "context",
+                    elements: [
+                      {
+                        type: "image",
+                        image_url:
+                          "https://api.slack.com/img/blocks/bkb_template_images/placeholder.png",
+                        alt_text: "placeholder"
+                      }
+                    ]
+                  },
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: "*🚀 Setting Up Leaderboard*"
+                    }
+                  },
+                  {
+                    type: "context",
+                    elements: [
+                      {
+                        type: "mrkdwn",
+                        text: "How to get started"
+                      }
+                    ]
+                  },
+                  {
+                    type: "divider"
+                  },
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text:
+                        "\n>Create two channels called `#referral-leaderboard` and `#referral-engine`\n\n> Use `/invite @leaderboard` to invite me to those channels\n\n> Invite your team members to `#referral-leaderboard` so they can see their score"
+                    }
+                  },
+                  {
+                    type: "context",
+                    elements: [
+                      {
+                        type: "image",
+                        image_url:
+                          "https://api.slack.com/img/blocks/bkb_template_images/placeholder.png",
+                        alt_text: "placeholder"
+                      }
+                    ]
+                  },
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: "*🏆 Playing Leaderboard*"
+                    }
+                  },
+                  {
+                    type: "context",
+                    elements: [
+                      {
+                        type: "mrkdwn",
+                        text:
+                          "How to earn points, win prizes, and help your team"
+                      }
+                    ]
+                  },
+                  {
+                    type: "divider"
+                  },
+                  {
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text:
+                        "\n>Use `/referral` to submit a referral to your hiring manager\n\n>Earn 1 point for every referral you submit\n\n>If you have the most points at the end of the period you win a prize!"
+                    }
+                  },
+                  {
+                    type: "context",
+                    elements: [
+                      {
+                        type: "image",
+                        image_url:
+                          "https://api.slack.com/img/blocks/bkb_template_images/placeholder.png",
+                        alt_text: "placeholder"
+                      }
+                    ]
+                  },
+                  {
+                    type: "actions",
+                    elements: [
+                      {
+                        type: "button",
+                        text: {
+                          type: "plain_text",
+                          text: "💥 Submit Referral",
+                          emoji: true
+                        },
+                        style: "primary",
+                        value: "submit_referral_button"
+                      },
+                      {
+                        type: "button",
+                        text: {
+                          type: "plain_text",
+                          text: "❓ FAQ",
+                          emoji: true
+                        },
+                        value: "faq_button"
+                      }
+                    ]
+                  },
+                  {
+                    type: "context",
+                    elements: [
+                      {
+                        type: "mrkdwn",
+                        text:
+                          "For support or questions, contact <matthewbusel@gmail.com>"
+                      }
+                    ]
+                  }
+                ]
+              })
+            };
+
+            // open the modal by calling views.open method and sending the payload
+            axios
+              .post(`${apiUrl}/views.publish`, qs.stringify(view))
+              .then(result => {
+                debug("views.publish: %o", result.data);
+                res.send("");
+              })
+              .catch(err => {
+                debug("views.publish call failed: %o", err);
+                res.sendStatus(500);
+              });
+          };
+        }
+      }
+      break;
+    }
+    default: {
+      res.sendStatus(404);
+    }
+  }
+});
 
 // --------------------------------------------------------------------------------------------------------------------------
 // Start server
