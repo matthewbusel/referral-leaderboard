@@ -9,6 +9,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const qs = require("querystring");
 const confirmationmsg = require("./confirmationmsg");
+const viewBlocks = require("./viewBlocks");
 const signature = require("./verifySignature");
 const debug = require("debug")("slash-command-template:index");
 const moment = require("moment");
@@ -94,7 +95,7 @@ app.get("/auth", function(req, res) {
       searchCreateTeam(team);
 
       // redirect to the download success webpage
-      res.redirect(process.env.LANDING_PAGE_URL);
+      res.redirect(process.env.DOWNLOAD_PAGE_URL);
 
       // res.sendStatus(200);
       // Show a nicer web page or redirect to Slack, instead of just giving 200 in reality!
@@ -178,7 +179,7 @@ const updateToken = (team_id, access_token, recordId) => {
 };
 
 // Find the access token based on the team_id. Resolve with the token, and the original req, res from the slash command post request
-const getToken = (team_id, req, res) => {
+const getToken = (team_id, webhookChannel, req, res) => {
   return new Promise((resolve, reject) => {
     const teamSearch = `team_id = "${team_id}"`;
 
@@ -192,8 +193,37 @@ const getToken = (team_id, req, res) => {
           let access_token = records[0].fields.access_token;
           resolve({
             access_token: access_token,
+            webhookChannel: webhookChannel,
             req: req,
             res: res
+          });
+        },
+        function done(err) {
+          if (err) {
+            reject(err);
+          }
+        }
+      );
+  });
+};
+
+// Get the webhook channel that was chosen at installation based on team_id. Resolve with the webhook channel and teamId. Used in app_home.
+const getWebhookChannel = (team_id) => {
+  return new Promise((resolve, reject) => {
+    const teamSearch = `teamId = "${team_id}"`;
+
+    base("Teams")
+      .select({
+        view: "Grid view",
+        filterByFormula: teamSearch
+      })
+      .eachPage(
+        function page(records) {
+          console.log(records)
+          let webhookChannel = records[0].fields.webhook_channel;
+          resolve({
+            webhookChannel: webhookChannel,
+            team_id: team_id
           });
         },
         function done(err) {
@@ -234,7 +264,9 @@ const searchCreateTeam = team => {
 
 // Create the team in the Teams table and save the webhook channel and webhook url
 const createTeam = team => {
-  let endDate = moment().add(90, 'days').calendar();
+  let endDate = moment()
+    .add(90, "days")
+    .calendar();
   base("Teams").create(
     [
       {
@@ -433,7 +465,7 @@ app.post("/interactive", (req, res) => {
   const team_id = body.team.id;
   const user_id = body.user.id;
   const { type, trigger_id } = body;
-  
+
   switch (body.type) {
     // if the user is submitting a referral ->
     case "view_submission": {
@@ -615,83 +647,7 @@ app.post("/interactive", (req, res) => {
             // token: process.env.SLACK_ACCESS_TOKEN,
             token: access_token,
             trigger_id,
-            view: JSON.stringify({
-              type: "modal",
-              title: {
-                type: "plain_text",
-                text: "FAQ",
-                emoji: true
-              },
-              close: {
-                type: "plain_text",
-                text: "Cancel",
-                emoji: true
-              },
-              blocks: [
-                {
-                  type: "divider"
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text:
-                      "*Do we have to name the channels #referral-engine and #referral-leaderboard?*\nFor now yes, although we'd like to add flexibility to change the names in the future."
-                  }
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text:
-                      "*How long does the competition last?*\nThe length of the game is determined by your hiring manger when he or she signed up, but we default to 90 days. If you'd like to change the game end date, please reach out to support."
-                  }
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text:
-                      "*What is the prize for winning Leaderboard?*\nThe prize for each leaderboard is determined by your company. If you're unsure what it should be reach out - we have recommendations!"
-                  }
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text:
-                      "*How often does Leaderboard post in Slack?*\nWe only post the results of Leaderboard once per week in #referral-leaderboard so your team can stay focused."
-                  }
-                },
-                {
-                  type: "divider"
-                }
-                // commented out until I can figure out how to open a modal within a modal + open a new tab
-                // {
-                //   type: "actions",
-                //   elements: [
-                //     {
-                //       type: "button",
-                //       text: {
-                //         type: "plain_text",
-                //         text: "Send feedback",
-                //         emoji: true
-                //       },
-                //       value: "send_feedback_button"
-                //     },
-                //     {
-                //       type: "button",
-                //       text: {
-                //         type: "plain_text",
-                //         text: "Visit website",
-                //         emoji: true
-                //       },
-                //       value: "visit_website_button"
-                //     }
-                //   ]
-                // }
-              ]
-            })
+            view: JSON.stringify(viewBlocks.faqModal)
           };
 
           // open the modal by calling views.open method and sending the payload
@@ -981,27 +937,51 @@ const post = employeeList => {
     if (index == 0) {
       for (var key in obj) {
         // dynamic number of spaces after each name dependent upon the length of the name in order to align horizontally
-        let numSpaces = 46 - key.length * 2;
-        let spaces = " ".repeat(numSpaces);
+        // let numSpaces = 46 - key.length * 2;
+        // let spaces = " ".repeat(numSpaces);
+        let spaces = " ".repeat(3);
 
         blockArray.push({
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${index + 1}*            ${key}${spaces}${obj[key]}`
+            text: `🥇       ${key}${spaces}-  *${obj[key]}*`
+          }
+        });
+      }
+    } else if (index == 1) {
+      for (var key in obj) {
+        let spaces = " ".repeat(3);
+
+        blockArray.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `🥈       ${key}${spaces}-  *${obj[key]}*`
+          }
+        });
+      }
+    } else if (index == 2) {
+      for (var key in obj) {
+        let spaces = " ".repeat(3);
+
+        blockArray.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `🥉       ${key}${spaces}-  *${obj[key]}*`
           }
         });
       }
     } else {
       for (var key in obj) {
-        let numSpaces = 46 - key.length * 2;
-        let spaces = " ".repeat(numSpaces);
+        let spaces = " ".repeat(3);
 
         blockArray.push({
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${index + 1}*            ${key}${spaces}${obj[key]}`
+            text: `\`${index + 1}\`         ${key}${spaces}-  *${obj[key]}*`
           }
         });
       }
@@ -1012,6 +992,9 @@ const post = employeeList => {
 
   // add a heading to the leaderboard post with the date
   blockArray.unshift(
+    {
+      type: "divider"
+    },
     {
       type: "section",
       text: {
@@ -1029,27 +1012,33 @@ const post = employeeList => {
       ]
     },
     {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Rank*      *Name*                                   *Referrals*"
-      }
+      type: "divider"
     },
     {
-      type: "divider"
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `*Rank*      *Name*               *Referrals*`
+        }
+      ]
     }
   );
 
-  blockArray.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text:
-          "Questions? Contact your hiring manager or <matthewbusel@gmail.com>"
-      }
-    ]
-  });
+  blockArray.push(
+    {
+      type: "divider"
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "Questions? Contact <support@slackleaderboard.app>"
+        }
+      ]
+    }
+  );
 
   const json = {
     username: "referralleaderboard",
@@ -1101,7 +1090,7 @@ const postInitMessage = (record, referral) => {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `💥 *You have a new referral submission!* \n\n*Referrer:*  <google.com|${referral.employee}>`
+          text: `💥 *You have a new referral submission!* \n\n*Referrer:*  <${process.env.LANDING_PAGE_URL}|${referral.employee}>`
         }
       },
       {
@@ -1138,7 +1127,7 @@ const postInitMessage = (record, referral) => {
         elements: [
           {
             type: "mrkdwn",
-            text: "Questions? Contact <matthewbusel@gmail.com>"
+            text: "Questions? Contact <support@slackleaderboard.app>"
           }
         ]
       },
@@ -1170,7 +1159,7 @@ const send = async (data, access_token, as_user) => {
  * Endpoint to receive events from Slack's Events API.
  */
 
-app.post("/events", (req, res) => {  
+app.post("/events", (req, res) => {
   switch (req.body.type) {
     case "url_verification": {
       // verify Events API endpoint by returning challenge if present
@@ -1190,10 +1179,13 @@ app.post("/events", (req, res) => {
         // if a user selects the app home, open the app home view
 
         if (type === "app_home_opened") {
-          getToken(team_id).then(record => openView(record));
+          getWebhookChannel(team_id).then(record => getToken(record.team_id, record.webhookChannel).then(record => openView(record)));
+          // below replaced by above in order to include the webhook channel in the app_home
+          // getToken(team_id).then(record => openView(record));
 
           const openView = record => {
             let access_token = record.access_token;
+            let webhookChannel = record.webhookChannel;
 
             const view = {
               // token: process.env.SLACK_ACCESS_TOKEN,
@@ -1217,7 +1209,7 @@ app.post("/events", (req, res) => {
                     text: {
                       type: "mrkdwn",
                       text:
-                        "Leaderboard is a friendly competition where you can win prizes and help your team hire better 😎"
+                        "Leaderboard is a friendly competition where you can win prizes and help your team hire 😎"
                     }
                   },
                   {
@@ -1255,7 +1247,7 @@ app.post("/events", (req, res) => {
                     text: {
                       type: "mrkdwn",
                       text:
-                        "\n>Create two channels called `#referral-leaderboard` and `#referral-engine`\n\n> Use `/invite @leaderboard` to invite me to those channels\n\n> Invite your team members to `#referral-leaderboard` so they can see their score"
+                        `\n>Create a channel called \`#referral-engine\`\n\n> Add Leaderboard -> go to that channel and use \`/invite @leaderboard\` \n\n> Congrats! Leaderboard will now post new referrals in \`#referral-engine\` and weekly standings in \`${webhookChannel}\``
                     }
                   },
                   {
@@ -1338,7 +1330,7 @@ app.post("/events", (req, res) => {
                       {
                         type: "mrkdwn",
                         text:
-                          "For support or questions, contact <matthewbusel@gmail.com>"
+                          "For support or questions, contact <support@slackleaderboard.app>"
                       }
                     ]
                   }

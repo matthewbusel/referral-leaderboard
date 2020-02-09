@@ -69,7 +69,7 @@ const sendConfirmation = (referral, access_token) => {
               {
                 type: "mrkdwn",
                 text:
-                  "Questions? Contact your hiring manager or <matthewbusel@gmail.com>"
+                  "Questions? Contact your hiring manager or <support@slackleaderboard.app>"
               }
             ]
           }
