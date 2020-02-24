@@ -223,4 +223,19 @@ const faqModal = {
               ]
             }
 
-module.exports = { appHomeView, faqModal };
+const channelCreatedMessage = {
+    channel: "referral-engine",
+    text:
+      ":wave: H! I'm Leaderboard. I'm here to help your team increase employee referrals.",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Welcome to Leaderboard - the friendly competition that helps companies increase employee referrals!"
+        }
+      }
+    ]
+  };
+
+module.exports = { appHomeView, faqModal, channelCreatedMessage };
