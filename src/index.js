@@ -76,11 +76,11 @@ app.get("/auth", function(req, res) {
   ) {
     if (!error && response.statusCode == 200) {
       // Get an auth token (and store the team_id / token)
-      // storage.setItemSync(JSON.parse(body).team_id, JSON.parse(body).access_token);
 
       let team_id = JSON.parse(body).team.id;
       let access_token = JSON.parse(body).access_token;
-
+      let authed_user = JSON.parse(body).authed_user.id;
+      
       // Search for existing team_id / access_token in db, update if team_id exists, create if team_id does not exist
       searchCreateToken(team_id, access_token);
 
@@ -93,6 +93,9 @@ app.get("/auth", function(req, res) {
       team.authed_user = JSON.parse(body).authed_user.id;
 
       searchCreateTeam(team);
+      postWelcomeMessage(team_id, authed_user, access_token);
+      
+      getEmail(access_token, authed_user);
 
       // redirect to the download success webpage
       res.redirect(process.env.DOWNLOAD_PAGE_URL);
@@ -208,7 +211,7 @@ const getToken = (team_id, webhookChannel, req, res) => {
 };
 
 // Get the webhook channel that was chosen at installation based on team_id. Resolve with the webhook channel and teamId. Used in app_home.
-const getWebhookChannel = (team_id) => {
+const getWebhookChannel = team_id => {
   return new Promise((resolve, reject) => {
     const teamSearch = `teamId = "${team_id}"`;
 
@@ -219,7 +222,6 @@ const getWebhookChannel = (team_id) => {
       })
       .eachPage(
         function page(records) {
-          console.log(records)
           let webhookChannel = records[0].fields.webhook_channel;
           resolve({
             webhookChannel: webhookChannel,
@@ -317,13 +319,152 @@ const updateTeam = (team, recordId) => {
   );
 };
 
+// Get the authorizing user's email address from Slack then add that email to the DB
+const getEmail = async (access_token, user) => {
+  const args = {
+    user: user
+  }
+  const result = await axios.post(`${apiUrl}/users.info`, qs.stringify(args), {
+    headers: {
+      Authorization: "Bearer " + access_token
+    }
+  });
+  try {
+    const userId = result.data.user.id;
+    const email = result.data.user.profile.email;
+    searchAddEmail(userId, email);
+    
+    if (result.data.error)
+      console.log(`PostMessage Error: ${result.data.error}`);
+    
+  } catch (err) {
+    console.log(err);
+  }}
+
+
+/// Search for the record that has matches the authed_user field to the user who just authorized the app then call addEmail
+const searchAddEmail = (userId, email) => {
+  const userSearch = `authed_user = "${userId}"`;
+
+  base("Teams")
+    .select({
+      view: "Grid view",
+      filterByFormula: userSearch
+    })
+    .eachPage(
+      function page(records) {
+        addEmail(records[0].id, email);
+      },
+      function done(err) {
+        if (err) {
+          console.error(err);
+          return;
+        }
+      }
+    );
+};
+
+// Update the record in the Teams table to include the authed user's email address
+const addEmail = (record, email) => {
+  base('Teams').update([
+  {
+    "id": record,
+    "fields": {
+      "email": email
+    }
+  }
+], function(err, records) {
+  if (err) {
+    console.error(err);
+    return;
+  }
+});
+}
+
+// Post an initial welcome message to the installing users messages to help guide them with setup
+const postWelcomeMessage = (teamId, authed_user, token) => {
+  let messageData = {
+    channel: authed_user,
+    text:
+      ":wave: H! I'm Leaderboard. I'm here to help your team increase employee referrals.",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":wave: Hey <@" + authed_user + ">"
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "Welcome to Leaderboard - the friendly competition that helps companies increase employee referrals!"
+        }
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "Here's a quick guide to help you get started:"
+          }
+        ]
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "🚀 *Setting Up Leaderboard*"
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "\n>Create a channel called `#referral-engine`\n\n> Add Leaderboard to that channel using `/invite @leaderboard` \n\n>Finally, let your team know the Leaderboard has begun!"
+        }
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*🏆 Playing Leaderboard*"
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "\n>Use `/referral` to submit a referral to your hiring manager\n\n>Earn 1 point for every referral you submit\n\n>If you have the most points at the end of the period you win a prize!"
+        }
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text:
+              "For more info, visit the Home tab at the top of the page or reach out to <mailto:support@slackleaderboard.app|support@slackleaderboard.app>"
+          }
+        ]
+      }
+    ]
+  };
+  send(messageData, token, false);
+};
+
 // --------------------------------------------------------------------------------------------------------------------------
 // Endpoint to receive /referral slash command from Slack
 // Checks verification token and opens a dialog to capture more info
 
 app.post("/command", (req, res) => {
-  console.log(req.body);
-
   // extract the slash command text, and trigger ID from payload
   const { text, trigger_id, user_name, team_id, user_id } = req.body;
 
@@ -790,7 +931,7 @@ const createEmployee = employee => {
 
 // --------------------------------------------------------------------------------------------------------------------------
 
-// Listens for Zapier's Scheduler (which runs every Wednesday at 10 am ET)
+// Listens for `Zapier`'s Scheduler (which runs every Wednesday at 10 am ET)
 // which triggers a POST to this webhook
 // in the *Data* section, I created a `token` with a value equal to teamId
 // so I can verify it's me making the request and pass that teamId
@@ -844,9 +985,10 @@ const listTeams = () => {
           records.forEach(function(record) {
             let teamIdRetrieved = record.get("TeamId");
             let webhookUrl = record.get("webhook_url");
+            let gameEnd = record.get("game_end");
 
             // employeeList not has an object for each employee that has submitted a referral
-            teamList.push({ [teamIdRetrieved]: webhookUrl });
+            teamList.push({ [teamIdRetrieved]: webhookUrl, 'Game End': gameEnd});
           });
 
           resolve({
@@ -876,7 +1018,8 @@ const listEmployees = teamObject => {
   // object.keys returns an array of keys, so need to grab the 0th key in order to get the only key in the object
   let teamId = Object.keys(teamObject)[0];
   let webhookUrl = Object.values(teamObject)[0];
-
+  let gameEnd = Object.values(teamObject)[1];
+  
   return new Promise((resolve, reject) => {
     // create an empty array to push employee leaderboard objects to
     const employeeList = [];
@@ -904,7 +1047,8 @@ const listEmployees = teamObject => {
 
           resolve({
             employeeList: employeeList,
-            webhookUrl: webhookUrl
+            webhookUrl: webhookUrl,
+            gameEnd: gameEnd
           });
 
           // To fetch the next page of records, call `fetchNextPage`.
@@ -927,118 +1071,198 @@ const listEmployees = teamObject => {
 const post = employeeList => {
   let employeeArray = employeeList.employeeList;
   let webhookUrl = employeeList.webhookUrl;
+  let gameEnd = employeeList.gameEnd;
+  let shortGame = gameEnd.slice(5);
 
   // define an empty array to push a block section to for each employee on the leaderboard
   let blockArray = [];
 
-  // for every employee that submitted a referral, add a block to the block array with their name and referralcount
-  employeeArray.forEach(function(obj, index) {
-    // separating the top employee in case in the future we want to call out the leader in some way
-    if (index == 0) {
-      for (var key in obj) {
-        // dynamic number of spaces after each name dependent upon the length of the name in order to align horizontally
-        // let numSpaces = 46 - key.length * 2;
-        // let spaces = " ".repeat(numSpaces);
-        let spaces = " ".repeat(3);
+  if (employeeArray.length == 0) {
+    let date = moment().format("MMMM Do YYYY");
 
-        blockArray.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `🥇       ${key}${spaces}-  *${obj[key]}*`
-          }
-        });
-      }
-    } else if (index == 1) {
-      for (var key in obj) {
-        let spaces = " ".repeat(3);
-
-        blockArray.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `🥈       ${key}${spaces}-  *${obj[key]}*`
-          }
-        });
-      }
-    } else if (index == 2) {
-      for (var key in obj) {
-        let spaces = " ".repeat(3);
-
-        blockArray.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `🥉       ${key}${spaces}-  *${obj[key]}*`
-          }
-        });
-      }
-    } else {
-      for (var key in obj) {
-        let spaces = " ".repeat(3);
-
-        blockArray.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `\`${index + 1}\`         ${key}${spaces}-  *${obj[key]}*`
-          }
-        });
-      }
-    }
-  });
-
-  let date = moment().format("MMMM Do YYYY");
-
-  // add a heading to the leaderboard post with the date
-  blockArray.unshift(
-    {
-      type: "divider"
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*🏆 Leaderboard Results*"
-      }
-    },
-    {
-      type: "context",
-      elements: [
-        {
+    // add a heading to the leaderboard post with the date
+    blockArray.unshift(
+      {
+        type: "divider"
+      },
+      {
+        type: "section",
+        text: {
           type: "mrkdwn",
-          text: `*${date} - the results are in!*`
+          text: "*🏆 Leaderboard Results*"
         }
-      ]
-    },
-    {
-      type: "divider"
-    },
-    {
-      type: "context",
-      elements: [
-        {
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `*${date} - the results are in!*`
+          }
+        ]
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `*Rank*      *Name*               *Referrals*`
+          }
+        ]
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "section",
+        text: {
           type: "mrkdwn",
-          text: `*Rank*      *Name*               *Referrals*`
+          text: "Looks like no one is on the leaderboard yet - no fear!"
+        },
+        accessory: {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "💥 Submit referral",
+            emoji: true
+          },
+          style: "primary",
+          value: "submit_referral_button"
         }
-      ]
-    }
-  );
+      },
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "To earn a point, simply use `/referral` or the button above"
+			}
+		},
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "_Questions? Contact <support@slackleaderboard.app>_"
+          }
+        ]
+      }
+    );
+  } else {
+    // for every employee that submitted a referral, add a block to the block array with their name and referralcount
+    employeeArray.forEach(function(obj, index) {
+      // separating the top employee in case in the future we want to call out the leader in some way
+      if (index == 0) {
+        for (var key in obj) {
+          // dynamic number of spaces after each name dependent upon the length of the name in order to align horizontally
+          // let numSpaces = 46 - key.length * 2;
+          // let spaces = " ".repeat(numSpaces);
+          let spaces = " ".repeat(3);
 
-  blockArray.push(
-    {
-      type: "divider"
-    },
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: "Questions? Contact <support@slackleaderboard.app>"
+          blockArray.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `🥇       ${key}${spaces}-  *${obj[key]}*`
+            }
+          });
         }
-      ]
-    }
-  );
+      } else if (index == 1) {
+        for (var key in obj) {
+          let spaces = " ".repeat(3);
+
+          blockArray.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `🥈       ${key}${spaces}-  *${obj[key]}*`
+            }
+          });
+        }
+      } else if (index == 2) {
+        for (var key in obj) {
+          let spaces = " ".repeat(3);
+
+          blockArray.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `🥉       ${key}${spaces}-  *${obj[key]}*`
+            }
+          });
+        }
+      } else {
+        for (var key in obj) {
+          let spaces = " ".repeat(3);
+
+          blockArray.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `\`${index + 1}\`         ${key}${spaces}-  *${obj[key]}*`
+            }
+          });
+        }
+      }
+    });
+
+    let date = moment().format("MMMM Do YYYY");
+
+    // add a heading to the leaderboard post with the date
+    blockArray.unshift(
+      {
+        type: "divider"
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*🏆 Leaderboard Results*"
+        }
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `*${date} - the results are in!*`
+          }
+        ]
+      },
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `*Rank*      *Name*               *Referrals*`
+          }
+        ]
+      }
+    );
+
+    blockArray.push(
+      {
+        type: "divider"
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `Questions? Contact <support@slackleaderboard.app>           |             (final day to submit referrals: *${shortGame}*)`
+          }
+        ]
+      }
+    );
+  }
 
   const json = {
     username: "referralleaderboard",
@@ -1069,8 +1293,7 @@ const postInitMessage = (record, referral) => {
 
   let messageData = {
     channel: "#referral-engine",
-    text:
-      ":wave: Hello! I'm here to help your team make approved announcements into a channel.",
+    text: "💥 You have a new referral submission!",
     blocks: [
       {
         type: "divider"
@@ -1127,7 +1350,7 @@ const postInitMessage = (record, referral) => {
         elements: [
           {
             type: "mrkdwn",
-            text: "Questions? Contact <support@slackleaderboard.app>"
+            text: "_Questions? Contact <support@slackleaderboard.app>_"
           }
         ]
       },
@@ -1179,7 +1402,11 @@ app.post("/events", (req, res) => {
         // if a user selects the app home, open the app home view
 
         if (type === "app_home_opened") {
-          getWebhookChannel(team_id).then(record => getToken(record.team_id, record.webhookChannel).then(record => openView(record)));
+          getWebhookChannel(team_id).then(record =>
+            getToken(record.team_id, record.webhookChannel).then(record =>
+              openView(record)
+            )
+          );
           // below replaced by above in order to include the webhook channel in the app_home
           // getToken(team_id).then(record => openView(record));
 
@@ -1246,8 +1473,7 @@ app.post("/events", (req, res) => {
                     type: "section",
                     text: {
                       type: "mrkdwn",
-                      text:
-                        `\n>Create a channel called \`#referral-engine\`\n\n> Add Leaderboard -> go to that channel and use \`/invite @leaderboard\` \n\n> Congrats! Leaderboard will now post new referrals in \`#referral-engine\` and weekly standings in \`${webhookChannel}\``
+                      text: `\n>Create a channel called \`#referral-engine\`\n\n> Add Leaderboard -> go to that channel and use \`/invite @leaderboard\` \n\n> Congrats! Leaderboard will now post new referrals in \`#referral-engine\` and weekly standings in \`${webhookChannel}\``
                     }
                   },
                   {
@@ -1330,7 +1556,7 @@ app.post("/events", (req, res) => {
                       {
                         type: "mrkdwn",
                         text:
-                          "For support or questions, contact <support@slackleaderboard.app>"
+                          "_For support or questions, contact us at <mailto:support@slackleaderboard.app|support@slackleaderboard.app> or <https://calendly.com/leaderboard/getting-started?month=2020-02|schedule time> to chat_"
                       }
                     ]
                   }
@@ -1351,6 +1577,17 @@ app.post("/events", (req, res) => {
               });
           };
         }
+        // Trying to post a message once user creates #referral-engine to remind them to invite Leaderboard, but can't post b/c Leaderboard isn't in channel -> not sure how Karmabot got around this
+        //         if (type === "channel_created") {
+        //           let channel_name = req.body.event.channel.name;
+        //           let token = req.body.token;
+        //           if (channel_name === 'referral-engine') {
+        //               getToken(team_id).then(record => send(viewBlocks.channelCreatedMessage, record.access_token, false));
+
+        //           } else if (channel_name === 'refferal-engine' || channel_name === 'refferral-engine' || channel_name === 'referal-engine') {
+        //               // send(messageData, token, false);
+        //           }
+        //         }
       }
       break;
     }
