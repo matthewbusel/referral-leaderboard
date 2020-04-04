@@ -386,7 +386,7 @@ const postWelcomeMessage = (teamId, authed_user, token) => {
   let messageData = {
     channel: authed_user,
     text:
-      ":wave: H! I'm Leaderboard. I'm here to help your team increase employee referrals.",
+      ":wave: H! I'm Referralboard. I'm here to help your team increase employee referrals.",
     blocks: [
       {
         type: "section",
@@ -400,7 +400,7 @@ const postWelcomeMessage = (teamId, authed_user, token) => {
         text: {
           type: "mrkdwn",
           text:
-            "Welcome to Leaderboard - the friendly competition that helps companies increase employee referrals!"
+            "Welcome to Referralboard - the friendly competition that helps companies increase employee referrals!"
         }
       },
       {
@@ -416,7 +416,7 @@ const postWelcomeMessage = (teamId, authed_user, token) => {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "🚀 *Setting Up Leaderboard*"
+          text: "🚀 *Setting Up Referralboard*"
         }
       },
       {
@@ -424,7 +424,7 @@ const postWelcomeMessage = (teamId, authed_user, token) => {
         text: {
           type: "mrkdwn",
           text:
-            "\n>Create a channel called `#referral-engine`\n\n> Add Leaderboard to that channel using `/invite @leaderboard` \n\n>Finally, let your team know the Leaderboard has begun!"
+            "\n>Create a channel called `#referral-engine`\n\n> Add Referralboard to that channel using `/invite @referralboard` \n\n>Finally, let your team know the Referralboard has begun!"
         }
       },
       {
@@ -434,7 +434,7 @@ const postWelcomeMessage = (teamId, authed_user, token) => {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "*🏆 Playing Leaderboard*"
+          text: "*🏆 Playing Referralboard*"
         }
       },
       {
@@ -502,7 +502,7 @@ app.post("/command", (req, res) => {
                 text:
                   ":wave: Hey <@" +
                   user_id +
-                  ">, \n\nEarn *1 point* on the leaderboard for every referral you submit!"
+                  ">, \n\nEarn *1 point* on the referralboard for every referral you submit!"
               }
             },
             {
@@ -688,7 +688,7 @@ app.post("/interactive", (req, res) => {
                     text:
                       ":wave: Hey <@" +
                       user_id +
-                      ">, \n\nEarn *1 point* on the leaderboard for every referral you submit!"
+                      ">, \n\nEarn *1 point* on the referralboard for every referral you submit!"
                   }
                 },
                 {
@@ -1089,7 +1089,7 @@ const post = employeeList => {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "*🏆 Leaderboard Results*"
+          text: "*🏆 Referralboard Results*"
         }
       },
       {
@@ -1120,7 +1120,7 @@ const post = employeeList => {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "Looks like no one is on the leaderboard yet - no fear!"
+          text: "Looks like no one is on the referralboard yet - no fear!"
         },
         accessory: {
           type: "button",
@@ -1222,7 +1222,7 @@ const post = employeeList => {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "*🏆 Leaderboard Results*"
+          text: "*🏆 Referralboard Results*"
         }
       },
       {
@@ -1324,11 +1324,11 @@ const postInitMessage = (record, referral) => {
         fields: [
           {
             type: "mrkdwn",
-            text: `\n>*Name* \n>${referral.name}`
+            text: `\n*Name* \n${referral.name}`
           },
           {
             type: "mrkdwn",
-            text: `\n>*Position* \n>${referral.position}`
+            text: `\n*Position* \n${referral.position}`
           }
         ]
       },
@@ -1337,11 +1337,11 @@ const postInitMessage = (record, referral) => {
         fields: [
           {
             type: "mrkdwn",
-            text: `\n>*Email* \n><mailto:${referral.email}|${referral.email}>`
+            text: `\n*Email* \n<mailto:${referral.email}|${referral.email}>`
           },
           {
             type: "mrkdwn",
-            text: `\n>*LinkedIn* \n>${referral.linkedin}`
+            text: `\n*LinkedIn* \n${referral.linkedin}`
           }
         ]
       },
@@ -1356,7 +1356,7 @@ const postInitMessage = (record, referral) => {
       },
       {
         type: "divider"
-      }
+      },
     ]
   };
   send(messageData, access_token, false);
@@ -1425,7 +1425,7 @@ app.post("/events", (req, res) => {
                     type: "section",
                     text: {
                       type: "mrkdwn",
-                      text: " *Leaderboard*"
+                      text: " *Referralboard*"
                     }
                   },
                   {
@@ -1436,7 +1436,7 @@ app.post("/events", (req, res) => {
                     text: {
                       type: "mrkdwn",
                       text:
-                        "Leaderboard is a friendly competition where you can win prizes and help your team hire 😎"
+                        "Referralboard is a friendly competition where you can win prizes and help your team hire 😎"
                     }
                   },
                   {
@@ -1454,7 +1454,7 @@ app.post("/events", (req, res) => {
                     type: "section",
                     text: {
                       type: "mrkdwn",
-                      text: "*🚀 Setting Up Leaderboard*"
+                      text: "*🚀 Setting Up Referralboard*"
                     }
                   },
                   {
@@ -1473,7 +1473,7 @@ app.post("/events", (req, res) => {
                     type: "section",
                     text: {
                       type: "mrkdwn",
-                      text: `\n>Create a channel called \`#referral-engine\`\n\n> Add Leaderboard -> go to that channel and use \`/invite @leaderboard\` \n\n> Congrats! Leaderboard will now post new referrals in \`#referral-engine\` and weekly standings in \`${webhookChannel}\``
+                      text: `\n>Create a channel called \`#referral-engine\`\n\n> Add Referralboard -> go to that channel and use \`/invite @referralboard\` \n\n> Congrats! Referralboard will now post new referrals in \`#referral-engine\` and weekly standings in \`${webhookChannel}\``
                     }
                   },
                   {
@@ -1491,7 +1491,7 @@ app.post("/events", (req, res) => {
                     type: "section",
                     text: {
                       type: "mrkdwn",
-                      text: "*🏆 Playing Leaderboard*"
+                      text: "*🏆 Playing Referralboard*"
                     }
                   },
                   {
@@ -1608,8 +1608,9 @@ const server = app.listen(process.env.PORT || 5000, () => {
 });
 
 // Ping server to keep it alive
-setInterval(() => {
-  http.get(`http://${process.env.PROJECT_DOMAIN}.glitch.me/`);
-}, 280000);
+// No longer pinging server since app is Boosted and always on as part of Glitch beta
+// setInterval(() => {
+//   http.get(`http://${process.env.PROJECT_DOMAIN}.glitch.me/`);
+// }, 280000);
 
 module.exports = { getToken };

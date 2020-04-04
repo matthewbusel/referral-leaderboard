@@ -31,7 +31,7 @@ const sendConfirmation = (referral, access_token) => {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `🚀 *Great job!* You just earned a point on the leaderboard.`
+              text: `🚀 *Great job!* You just earned a point on the referralboard.`
             }
           },
           {
@@ -42,11 +42,11 @@ const sendConfirmation = (referral, access_token) => {
             fields: [
               {
                 type: "mrkdwn",
-                text: `\n>*Name* \n>${referral.name}`
+                text: `\n*Name* \n${referral.name}`
               },
               {
                 type: "mrkdwn",
-                text: `\n>*Position* \n>${referral.position}`
+                text: `\n*Position* \n${referral.position}`
               }
             ]
           },
@@ -55,11 +55,11 @@ const sendConfirmation = (referral, access_token) => {
             fields: [
               {
                 type: "mrkdwn",
-                text: `\n>*Email* \n><mailto:${referral.email}|${referral.email}>`
+                text: `\n*Email* \n<mailto:${referral.email}|${referral.email}>`
               },
               {
                 type: "mrkdwn",
-                text: `\n>*LinkedIn* \n>${referral.linkedin}`
+                text: `\n*LinkedIn* \n${referral.linkedin}`
               }
             ]
           },
