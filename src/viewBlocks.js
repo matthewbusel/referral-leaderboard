@@ -226,13 +226,13 @@ const faqModal = {
 const channelCreatedMessage = {
     channel: "referral-engine",
     text:
-      ":wave: H! I'm Leaderboard. I'm here to help your team increase employee referrals.",
+      ":wave: H! I'm Referralboard. I'm here to help your team increase employee referrals.",
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "Welcome to Leaderboard - the friendly competition that helps companies increase employee referrals!"
+          text: "Welcome to Referralboard - the friendly competition that helps companies increase employee referrals!"
         }
       }
     ]
