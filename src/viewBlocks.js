@@ -138,7 +138,7 @@ const appHomeView = {
                       {
                         type: "mrkdwn",
                         text:
-                          "For support or questions, contact <support@slackleaderboard.app>"
+                          "For support or questions, contact <support@referralboard.app>"
                       }
                     ]
                   }
@@ -174,7 +174,7 @@ const faqModal = {
                   text: {
                     type: "mrkdwn",
                     text:
-                      "*How long does the competition last?*\nThe length of the game is determined by your hiring manger when he or she signed up, but we default to 90 days.\n\nIf you'd like to change the game end date, please shoot an email to support@slackleaderboard.app."
+                      "*How long does the competition last?*\nThe length of the game is determined by your hiring manger when he or she signed up, but we default to 90 days.\n\nIf you'd like to change the game end date, please shoot an email to support@referralboard.app."
                   }
                 },
                 {
@@ -238,4 +238,81 @@ const channelCreatedMessage = {
     ]
   };
 
-module.exports = { appHomeView, faqModal, channelCreatedMessage };
+const helpCommand = {
+	"type": "modal",
+	"title": {
+		"type": "plain_text",
+		"text": "Referralboard Support",
+		"emoji": true
+	},
+	"close": {
+		"type": "plain_text",
+		"text": "Close",
+		"emoji": true
+	},
+	"blocks": [
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*Referralboard* is a friendly competition where you can win prizes and help your team hire! :sunglasses:"
+			}
+		},
+		{
+			"type": "context",
+			"elements": [
+				{
+					"type": "image",
+					"image_url": "https://api.slack.com/img/blocks/bkb_template_images/placeholder.png",
+					"alt_text": "placeholder"
+				}
+			]
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*🏆 How to Play*"
+			}
+		},
+		{
+			"type": "divider"
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "- Use `/referral` to submit a referral to your hiring manager\n- Earn 1 point for every referral you submit\n- If you have the most points at the end of the period you win a prize!"
+			}
+		},
+		{
+			"type": "context",
+			"elements": [
+				{
+					"type": "image",
+					"image_url": "https://api.slack.com/img/blocks/bkb_template_images/placeholder.png",
+					"alt_text": "placeholder"
+				}
+			]
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*ℹ️ Help*"
+			}
+		},
+		{
+			"type": "divider"
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "If you have any questions or feedback please send a message to support@referralboard.app."
+			}
+		}
+	]
+}
+
+module.exports = { appHomeView, faqModal, channelCreatedMessage, helpCommand };
