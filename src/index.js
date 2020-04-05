@@ -451,7 +451,7 @@ const postWelcomeMessage = (teamId, authed_user, token) => {
           {
             type: "mrkdwn",
             text:
-              "For more info, visit the Home tab at the top of the page or reach out to <mailto:support@slackleaderboard.app|support@slackleaderboard.app>"
+              "For more info, visit the Home tab at the top of the page or reach out to <mailto:support@referralboard.app|support@referralboard.app>"
           }
         ]
       }
@@ -575,6 +575,51 @@ app.post("/command", (req, res) => {
             }
           ]
         })
+      };
+
+      // open the modal by calling views.open method and sending the payload
+      axios
+        .post(`${apiUrl}/views.open`, qs.stringify(view))
+        .then(result => {
+          debug("views.open: %o", result.data);
+          res.send("");
+        })
+        .catch(err => {
+          debug("views.open call failed: %o", err);
+          res.sendStatus(500);
+        });
+    };
+  } else {
+    debug("Verification token mismatch");
+    res.sendStatus(404);
+  }
+});
+
+
+// Endpoint to receive /referral_help slash command
+// Checks verification token and opens a dialog to capture more info
+
+app.post("/helpcommand", (req, res) => {
+  // extract the slash command text, and trigger ID from payload
+  const { text, trigger_id, user_name, team_id, user_id } = req.body;
+
+  console.log('Received help command')
+  
+  // Verify the signing secret
+  if (signature.isVerified(req)) {
+    // create the dialog payload - includes the dialog structure, Slack API token,
+    // and trigger ID
+
+    // retrieve the access token of the team who sent the /command post request to use to open a modal in their workspace
+    getToken(team_id, req, res).then(record => openView(record));
+
+    const openView = record => {
+      let access_token = record.access_token;
+
+      const view = {
+        token: access_token,
+        trigger_id,
+        view: JSON.stringify(viewBlocks.helpCommand)
       };
 
       // open the modal by calling views.open method and sending the payload
@@ -1148,7 +1193,7 @@ const post = employeeList => {
         elements: [
           {
             type: "mrkdwn",
-            text: "_Questions? Contact <support@slackleaderboard.app>_"
+            text: "_Questions? Contact <support@referralboard.app>_"
           }
         ]
       }
@@ -1257,7 +1302,7 @@ const post = employeeList => {
         elements: [
           {
             type: "mrkdwn",
-            text: `Questions? Contact <support@slackleaderboard.app>           |             (final day to submit referrals: *${shortGame}*)`
+            text: `Questions? Contact <support@referralboard.app>           |             (final day to submit referrals: *${shortGame}*)`
           }
         ]
       }
@@ -1350,7 +1395,7 @@ const postInitMessage = (record, referral) => {
         elements: [
           {
             type: "mrkdwn",
-            text: "_Questions? Contact <support@slackleaderboard.app>_"
+            text: "_Questions? Contact <support@referralboard.app>_"
           }
         ]
       },
@@ -1556,7 +1601,7 @@ app.post("/events", (req, res) => {
                       {
                         type: "mrkdwn",
                         text:
-                          "_For support or questions, contact us at <mailto:support@slackleaderboard.app|support@slackleaderboard.app> or <https://calendly.com/leaderboard/getting-started?month=2020-02|schedule time> to chat_"
+                          "_For support or questions, contact us at <mailto:support@referralboard.app|support@referralboard.app> or <https://calendly.com/leaderboard/getting-started?month=2020-02|schedule time> to chat_"
                       }
                     ]
                   }
